@@ -50,6 +50,12 @@
   product(bool, UseHugeTLBFS, false,                                    \
           "Use MAP_HUGETLB for large pages")                            \
                                                                         \
+  product(bool, THPStackMitigation, false,                                    \
+          "Use MAP_HUGETLB for large pages")                            \
+                                                                        \
+  product(bool, DelayThreadStartALot, false,                                    \
+          "Use MAP_HUGETLB for large pages")                            \
+                                                                        \
   product(bool, UseTransparentHugePages, false,                         \
           "Use MADV_HUGEPAGE for large pages")                          \
                                                                         \

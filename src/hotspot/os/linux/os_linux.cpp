@@ -822,6 +822,12 @@ static void *thread_native_entry(Thread *thread) {
     }
   }
 
+
+  if (DelayThreadStartALot) {
+    os::naked_short_sleep(999);
+  }
+
+
   // call one more level start routine
   thread->call_run();
 
@@ -3504,7 +3510,8 @@ size_t os::Linux::default_guard_size(os::ThreadType thr_type) {
   // Creating guard page is very expensive. Java thread has HotSpot
   // guard pages, only enable glibc guard page for non-Java threads.
   // (Remember: compiler thread is a Java thread, too!)
-  return ((thr_type == java_thread || thr_type == compiler_thread) ? 0 : page_size());
+  return THPStackMitigation? page_size() : 0 ;
+  //return ((thr_type == java_thread || thr_type == compiler_thread) ? 0 : page_size());
 }
 
 void os::Linux::rebuild_nindex_to_node_map() {
