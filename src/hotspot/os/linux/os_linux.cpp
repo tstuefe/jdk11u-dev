@@ -939,6 +939,43 @@ static void init_adjust_stacksize_for_guard_pages() {
 }
 #endif // GLIBC
 
+// JDK 11/8 - specific:
+// These helpers (is_thp_always_mode and thp_pagesize) were added to support
+// JDK-8312182 without having to backport a long chain of other THP-releated
+// patches.
+static bool is_thp_always_mode() {
+  const char* const filename =
+      "/sys/kernel/mm/transparent_hugepage/enabled";
+  bool result = false;
+  FILE* f = ::fopen(filename, "r");
+  if (f != NULL) {
+    char buf[64];
+    char* s = fgets(buf, sizeof(buf), f);
+    assert(s == buf, "Should have worked");
+    if (::strstr(buf, "[always]") != NULL) {
+      result = true;
+    }
+    fclose(f);
+  }
+  return result;
+}
+
+static size_t thp_pagesize() {
+  const char* const fileame =
+      "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size"
+  FILE* f = ::fopen(fileame, "r");
+  size_t result = 0;
+  if (f != nullptr) {
+    const int result = fscanf(f, SIZE_FORMAT, &result);
+    fclose(f);
+    if (result != 1) {
+      result = 0;
+    }
+  }
+  return result;
+}
+// End: JDK 11/8 specific
+
 bool os::create_thread(Thread* thread, ThreadType thr_type,
                        size_t req_stack_size) {
   assert(thread->osthread() == NULL, "caller responsible");
@@ -985,13 +1022,16 @@ bool os::create_thread(Thread* thread, ThreadType thr_type,
   }
   assert(is_aligned(stack_size, os::vm_page_size()), "stack_size not aligned");
 
-  // Add an additional page to the stack size to reduce its chances of getting large page aligned
-  // so that the stack does not get backed by a transparent huge page.
-  size_t default_large_page_size = os::large_page_size();
-  if (default_large_page_size != 0 &&
-      stack_size >= default_large_page_size &&
-      is_aligned(stack_size, default_large_page_size)) {
-    stack_size += os::vm_page_size();
+  if (THPStackMitigation) {
+    // In addition to the glibc guard page that prevents inter-thread-stack hugepage
+    // coalescing (see comment in os::Linux::default_guard_size()), we also make
+    // sure the stack size itself is not huge-page-size aligned; that makes it much
+    // more likely for thread stack boundaries to be unaligned as well and hence
+    // protects thread stacks from being targeted by khugepaged.
+    if (thp_pagesize() > 0 &&
+        is_aligned(stack_size, thp_pagesize())) {
+      stack_size += os::vm_page_size();
+    }
   }
 
   int status = pthread_attr_setstacksize(&attr, stack_size);
@@ -4176,24 +4216,6 @@ bool os::Linux::setup_large_page_type(size_t page_size) {
   }
 
   return UseSHM;
-}
-
-// JDK 11 and 8: is_thp_always_mode was added to support JDK-8312182 without
-// having to backport a long chain of newer THP-releated patches.
-static bool is_thp_always_mode() {
-  const char* filename = "/sys/kernel/mm/transparent_hugepage/enabled";
-  bool result = false;
-  FILE* f = ::fopen(filename, "r");
-  if (f != NULL) {
-    char buf[64];
-    char* s = fgets(buf, sizeof(buf), f);
-    assert(s == buf, "Should have worked");
-    if (::strstr(buf, "[always]") != NULL) {
-      result = true;
-    }
-    fclose(f);
-  }
-  return result;
 }
 
 void os::large_page_init() {
